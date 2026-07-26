@@ -2,8 +2,12 @@
 jac.local.toml
 
 # Secrets -- never commit. Repo is public.
+# Glob, not just the two known names: .env.production / .env.staging and any
+# other variant must be covered before someone creates one, not after.
 .env
-.env.local
+.env*
+*.pem
+*.key
 
 # Saturday practice artifacts, not part of the live build
 llmtest.jac
