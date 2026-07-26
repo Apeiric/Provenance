@@ -37,9 +37,12 @@ impl fetch(url: str) -> Page {
         # Not `with urlreq.urlopen(...) as r`: the stdlib handle types as Any
         # and jac check rejects Any in a with-statement (E1091/E1092).
         resp = urlreq.urlopen(req, timeout=90);
-        raw = resp.read().decode();
+        raw: str = str(resp.read().decode());
         resp.close();
-        payload = json.loads(raw);
+        # Annotate where the untyped value enters, not where it is used: the
+        # JSON boundary is the only place the checker can be told what shape
+        # is coming back.
+        payload = json.loads(raw) as dict;
     } except Exception as e {
         # Network failure, 402, 429, timeout -- all land here, and all fail
         # closed. This is the distinction that matters most in this file:
@@ -52,9 +55,9 @@ impl fetch(url: str) -> Page {
         return page;
     }
 
-    data = payload.get("data", {});
+    data = payload.get("data", {}) as dict;
     markdown = str(data.get("markdown", "") or "");
-    meta = data.get("metadata", {}) or {};
+    meta = (data.get("metadata", {}) or {}) as dict;
 
     page = Page(
         ok=bool(payload.get("success")) and len(markdown) > 0,

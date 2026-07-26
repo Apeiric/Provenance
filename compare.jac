@@ -16,7 +16,7 @@ import from gate { ProvenanceGate }
 
 
 """Seed four items: two that establish a pattern, two that could break it."""
-def seed_evidence() -> None {
+def seed_evidence {
     for n in [root -->][?:Evidence] {
         del n;
     }
@@ -66,7 +66,7 @@ def fmt(findings: list[dict]) -> str {
 }
 
 
-def row(label: str, a: str, b: str) -> None {
+def row(label: str, a: str, b: str) {
     print("  " + label.ljust(20) + a.ljust(34) + b);
 }
 

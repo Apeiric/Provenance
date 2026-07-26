@@ -24,7 +24,7 @@ glob FALSE_CLAIM: str =
     "The 2019 SMTP protocol update made email spoofing technically impossible";
 
 
-def show(a: Attestation, sid: str) -> None {
+def show(a: Attestation, sid: str) {
     print("  " + sid + "  verified=" + str(a.found).ljust(6) + "  " + a.note);
     print("      \"" + a.claim + "\"");
 }
