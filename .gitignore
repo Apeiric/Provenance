@@ -1,0 +1,10 @@
+.jac/
+jac.local.toml
+
+# Secrets -- never commit. Repo is public.
+.env
+.env.local
+
+# Saturday practice artifacts, not part of the live build
+llmtest.jac
+out.txt

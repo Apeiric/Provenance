@@ -1,0 +1,14 @@
+[project]
+name = "provenance"
+version = "0.1.0"
+description = "Command-line Jac project"
+entry-point = "main.jac"
+kind = "cli"
+
+[dependencies]
+byllm = "~=0.6"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+[byllm.model]
+default_model = "anthropic/claude-sonnet-5"
