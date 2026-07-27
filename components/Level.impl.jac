@@ -1,54 +1,56 @@
 """Beat engine for Level.
 
-Two rules govern everything here.
+Pacing is deliberately slow. The point of this screen is comprehension, not
+spectacle -- each beat has to sit on screen long enough for someone who has
+never seen it to read the claim and register what changed. A run takes about
+eighteen seconds, and the real model latency (~5s) disappears inside it.
+
+Two rules govern the code.
 
 1. Reactive `has` fields are REBOUND, never mutated. `x = x + [v]` re-renders;
    `x.append(v)` silently does not.
 2. A `setTimeout` callback reads the render-time snapshot of reactive state, not
    the latest value. So every scheduled beat computes from values CAPTURED in
-   its enclosing call frame (`chosen`, `i`) and assigns absolute values. That is
-   why the walk is a self-scheduling step function rather than a loop of
-   closures over a mutating index — the loop version reads stale and desyncs.
+   its enclosing call frame and assigns absolute values. That is why the walk is
+   a self-scheduling step function, and why the walk/response handshake goes
+   through PENDING (module state) instead of a `has` field.
 """
 
 impl Level.load_board -> None {
-    # No model involved -- this is a graph read, so the landing page paints the
-    # real evidence instantly rather than waiting on a decision.
-    #
-    # Guarded: a mount effect that throws takes the whole page down with it and
-    # the error boundary then remounts, which loops. A demo must degrade to a
-    # usable screen, never to a blank one.
+    # No model involved -- a graph read, so the page paints the real evidence
+    # immediately. Guarded: a mount effect that throws blanks the page and then
+    # loops on the error boundary. A demo degrades to usable, never to blank.
     try {
         result = root spawn Board();
-        if result.reports {
+        if len(result.reports) > 0 {
             b = result.reports[-1] as dict;
             evidence = b["evidence"] as list[dict];
-            note = "four pieces of evidence. each carries a verified flag the agent will never see.";
+            note = "Four things the AI is allowed to read. Some were confirmed true beforehand — the AI is never told which.";
         }
     } except Exception as e {
-        note = "board unavailable — press GUIDED RUN to load it";
+        note = "Couldn't load the evidence — press WATCH IT HAPPEN to retry.";
     }
 }
 
 
 impl Level.step_walk(chosen: list[str], i: int) -> None {
     if i >= len(chosen) {
-        # The walk owns the animation; it decides when the next beat may start.
         finish_walk();
         return;
     }
-    # Absolute assignment from captured values -- never `collected + [x]`.
     walkerAt = chosen[i];
     collected = chosen[0 : i + 1];
-    setTimeout(lambda { step_walk(chosen, i + 1); }, 760);
+    note = "It opens: " + (NAMES[chosen[i]] if chosen[i] in NAMES else chosen[i]) + ". Opening it is what puts it on the record.";
+    # 2.4s per stop -- long enough to read the highlighted card.
+    setTimeout(lambda { step_walk(chosen, i + 1); }, 2400);
 }
 
 
 impl Level.finish_walk -> None {
-    # Hand-off between the animation and the network, without clock arithmetic.
-    # PENDING is module state, so this reads the CURRENT value rather than the
-    # snapshot this closure was created with. If the model is still thinking,
-    # the oracle beat simply holds -- which is exactly what it is there for.
+    # Hand-off between animation and network without clock arithmetic. PENDING
+    # is module state, so this reads the CURRENT value rather than the snapshot
+    # this closure was created with. If the model is still thinking, the beat
+    # simply holds -- which is what it is there for.
     r = PENDING["data"] as dict;
     if not r {
         setTimeout(lambda { finish_walk(); }, 250);
@@ -56,11 +58,7 @@ impl Level.finish_walk -> None {
     }
 
     # The record the walker actually produced wins over the route we asked for.
-    # In free play a route may name a node that is not on the graph; showing the
-    # request instead of the record would be a lie.
-    # Cast at the boundary: dict values are Any and Jac will not auto-narrow.
     collected = r["touched"] as list[str];
-    touched = r["touched"] as list[str];
     cited = r["cited"] as list[str];
     verdicts = r["verdicts"] as list[dict];
     evidence = r["evidence"] as list[dict];
@@ -70,39 +68,54 @@ impl Level.finish_walk -> None {
     overall = str(r["overall"]);
 
     phase = "oracle";
-    note = "the claims cross to the model. the verified flags stay behind.";
+    note = "It has read everything it is going to read. Now it writes its reasons.";
 
     ids = r["cited"] as list[str];
     setTimeout(lambda {
         phase = "audit";
-        note = "the gate walks the citations. it cannot collect, so it cannot contaminate what it checks.";
+        note = "Step 2. No AI from here on — the checker just looks things up.";
+        walkerAt = "decision";
         step_audit(ids, 0);
-    }, 1600);
+    }, 3200);
 }
 
 
 impl Level.step_audit(ids: list[str], i: int) -> None {
-    # Constant velocity, identical dwell at every stop. The agent eased and
-    # arced; the auditor does not. The rigidity is the argument -- do not
-    # "improve" this into something graceful.
+    # Constant speed, identical dwell at every stop. The AI eased and curved;
+    # the checker does not. The rigidity is the argument -- do not soften it.
     if i >= len(ids) {
         auditAt = "";
+        checkLine = "";
         phase = "score";
-        note = "the gate has answered. same code, same answer, every time.";
+        note = "Done. Run it again and the checker gives exactly the same answer.";
         busy = False;
         return;
     }
     auditAt = ids[i];
-    setTimeout(lambda { step_audit(ids, i + 1); }, 460);
+    name = NAMES[ids[i]] if ids[i] in NAMES else ids[i];
+    note = "Checking what it said about: " + name;
+
+    # Spell out the two lookups. This IS the deterministic layer -- there is no
+    # judgement in it, just set membership and a stored flag, so it should read
+    # like arithmetic rather than an opinion.
+    v = verdict_of(ids[i]);
+    did_read = "YES" if ids[i] in collected else "NO";
+    confirmed = "YES" if v == "grounded" else "NO";
+    word = VERDICT_WORD[v] if v in VERDICT_WORD else v;
+    if did_read == "NO" {
+        checkLine = name + "  ·  did it actually read this? NO  →  " + word;
+    } else {
+        checkLine = name + "  ·  did it actually read this? YES  ·  was it confirmed beforehand? " + confirmed + "  →  " + word;
+    }
+    setTimeout(lambda { step_audit(ids, i + 1); }, 2100);
 }
 
 
 impl Level.run_level(chosen: list[str], inject: list[str]) -> None {
     busy = True;
     phase = "board";
-    note = "four pieces of evidence. each carries a verified flag the agent will never see.";
+    note = "Four things the AI is allowed to read. Some were confirmed true beforehand — the AI is never told which.";
     collected = [];
-    touched = [];
     cited = [];
     verdicts = [];
     walkerAt = "root";
@@ -111,26 +124,26 @@ impl Level.run_level(chosen: list[str], inject: list[str]) -> None {
     action = "";
     explanation = "";
     rate = 0.0;
+    checkLine = "";
     PENDING["data"] = None;
 
-    # The walk starts immediately and the server call is fired in the same
-    # breath, so real LLM latency is spent inside the animation instead of
-    # behind a spinner.
+    # The walk starts and the server call fires together, so real model latency
+    # is spent inside the animation rather than behind a spinner.
     setTimeout(lambda {
         phase = "walk";
-        note = "the agent walks. every node it enters hands itself to the walker — the record is written by movement.";
+        note = "Watch what it actually opens. Every one it opens gets recorded automatically.";
         step_walk(chosen, 0);
-    }, 820);
+    }, 1800);
 
     result = root spawn RouteRun(route=chosen, inject=inject);
 
-    if result.reports {
-        # Park it; finish_walk() picks it up once the animation has landed, so
+    if len(result.reports) > 0 {
+        # Park it; finish_walk() collects it once the animation has landed, so
         # the two never fight over `collected`.
         PENDING["data"] = result.reports[-1];
     } else {
         phase = "idle";
-        note = "no response from the walker.";
+        note = "The walker didn't respond. Press START OVER and try again.";
         busy = False;
     }
 }
@@ -138,19 +151,18 @@ impl Level.run_level(chosen: list[str], inject: list[str]) -> None {
 
 impl Level.start_guided -> None {
     mode = "guided";
+    lying = False;
     route = ["E1", "E2", "E3", "E4"];
-    injectText = "";
     run_level(["E1", "E2", "E3", "E4"], []);
 }
 
 
 impl Level.start_free -> None {
     mode = "free";
-    phase = "walk";
+    phase = "picking";
     busy = False;
     route = [];
     collected = [];
-    touched = [];
     cited = [];
     verdicts = [];
     walkerAt = "root";
@@ -159,13 +171,13 @@ impl Level.start_free -> None {
     action = "";
     explanation = "";
     rate = 0.0;
-    injectText = "";
-    note = "your turn. click nodes to choose a route, then commit. the gate is correct whichever path you take.";
+    lying = False;
+    note = "Your turn. Click the circles to choose what the AI gets to read, then press RUN IT.";
 }
 
 
 impl Level.toggle_node(nid: str) -> None {
-    if mode != "free" or phase != "walk" or busy {
+    if mode != "free" or phase != "picking" or busy {
         return;
     }
     if nid == "root" or nid == "decision" {
@@ -177,15 +189,29 @@ impl Level.toggle_node(nid: str) -> None {
         next = route + [nid];
     }
     route = next;
-    collected = next;
-    walkerAt = next[-1] if next else "root";
-    note = "route: " + (",".join(next) if next else "(empty)") + " — commit when ready.";
+    names = [NAMES[r] if r in NAMES else r for r in next];
+    if len(next) > 0 {
+        note = "It will read: " + ", ".join(names) + ".  Press RUN IT when you're ready.";
+    } else {
+        note = "Nothing picked yet. Click the circles to choose what the AI gets to read.";
+    }
+}
+
+
+impl Level.toggle_lie -> None {
+    lying = not lying;
+    if lying {
+        note = "Lie armed. The AI will also claim it read something it never opened. Press RUN IT and watch the checker catch it.";
+    } else {
+        note = "Lie switched off. Press RUN IT for an honest run.";
+    }
 }
 
 
 impl Level.commit_free -> None {
-    inject = [injectText] if injectText else [];
-    run_level(route, inject);
+    # "E9" exists nowhere on the graph, so the walker cannot possibly have read
+    # it -- which is exactly why the checker will call it out.
+    run_level(route, ["E9"] if lying else []);
 }
 
 
@@ -195,7 +221,6 @@ impl Level.reset -> None {
     busy = False;
     route = [];
     collected = [];
-    touched = [];
     cited = [];
     verdicts = [];
     walkerAt = "root";
@@ -204,6 +229,6 @@ impl Level.reset -> None {
     action = "";
     explanation = "";
     rate = 0.0;
-    injectText = "";
-    note = "";
+    lying = False;
+    note = "Four things the AI is allowed to read. Some were confirmed true beforehand — the AI is never told which.";
 }
