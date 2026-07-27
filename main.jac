@@ -9,12 +9,12 @@ import from models { Evidence, Decision }
 import from agent { Deliberator }
 import from gate { ProvenanceGate }
 import from services.provenance { Prepare, Check }
-import from .components.GateScreen { GateScreen }
+import from .components.Level { Level }
 
 
 # Client entry. `jac start` serves this; `jac run main.jac` runs the CLI path below.
 def:pub app() -> JsxElement {
-    return <GateScreen />;
+    return <Level />;
 }
 
 with entry:__main__ {
